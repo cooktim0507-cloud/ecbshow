@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoLot Pro | Vehicle Inventory & QR Upload Portal</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- QRCode.js CDN for client-side scannable QR generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- PapaParse CDN for fast CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-lg shadow-inner">
+                    <i data-lucide="car-front" class="w-6 h-6 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight leading-none">AutoLot<span class="text-blue-400">Pro</span></h1>
+                    <p class="text-xs text-slate-400 mt-0.5">Dealer Inventory Portal</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button onclick="openQrModal()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm cursor-pointer">
+                    <i data-lucide="qr-code" class="w-4 h-4"></i>
+                    <span>Mobile QR Access</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- KPI Summary Strip -->
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Vehicles</p>
+                    <p id="stat-total" class="text-2xl font-bold text-slate-900 mt-1">0</p>
+                </div>
+                <div class="bg-blue-50 text-blue-600 p-3 rounded-lg">
+                    <i data-lucide="layers" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Available Units</p>
+                    <p id="stat-available" class="text-2xl font-bold text-emerald-600 mt-1">0</p>
+                </div>
+                <div class="bg-emerald-50 text-emerald-600 p-3 rounded-lg">
+                    <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Lot Value</p>
+                    <p id="stat-value" class="text-2xl font-bold text-slate-900 mt-1">$0</p>
+                </div>
+                <div class="bg-indigo-50 text-indigo-600 p-3 rounded-lg">
+                    <i data-lucide="dollar-sign" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Avg. Mileage</p>
+                    <p id="stat-mileage" class="text-2xl font-bold text-slate-900 mt-1">0 mi</p>
+                </div>
+                <div class="bg-amber-50 text-amber-600 p-3 rounded-lg">
+                    <i data-lucide="gauge" class="w-5 h-5"></i>
+                </div>
+            </div>
+        </section>
+
+        <!-- Uploader & Bulk Import Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Column: Single Vehicle Entry Form (8 cols) -->
+            <section class="lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="plus-circle" class="w-5 h-5 text-blue-600"></i>
+                        <h2 class="font-semibold text-slate-800">Add Vehicle to Inventory</h2>
+                    </div>
+                    <button type="button" onclick="autoFillSampleVin()" class="text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200 transition flex items-center gap-1.5 cursor-pointer">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                        <span>Sample VIN Auto-Fill</span>
+                    </button>
+                </div>
+
+                <form id="vehicle-form" class="p-6 space-y-5">
+                    <!-- Row 1: VIN & Status -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">VIN (Vehicle Identification Number) *</label>
+                            <div class="relative">
+                                <input type="text" id="vin" required maxlength="17" placeholder="e.g. 1HGCM82633A004352" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm uppercase font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <button type="button" onclick="decodeCurrentVin()" class="absolute right-1.5 top-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1 rounded transition">Decode</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Condition / Status *</label>
+                            <select id="status" required class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="Available">Available</option>
+                                <option value="Certified Pre-Owned">Certified Pre-Owned</option>
+                                <option value="New">New</option>
+                                <option value="In Recon">In Recon</option>
+                                <option value="Pending Sale">Pending Sale</option>
+                                <option value="Sold">Sold</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Year, Make, Model, Trim -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Year *</label>
+                            <input type="number" id="year" required min="1950" max="2028" placeholder="2024" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Make *</label>
+                            <input type="text" id="make" required placeholder="Toyota" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Model *</label>
+                            <input type="text" id="model" required placeholder="Camry" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Trim</label>
+                            <input type="text" id="trim" placeholder="XSE V6" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Mileage, Price, Exterior Color -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Mileage *</label>
+                            <input type="number" id="mileage" required min="0" placeholder="14250" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">List Price ($) *</label>
+                            <input type="number" id="price" required min="0" step="1" placeholder="28990" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Exterior Color</label>
+                            <input type="text" id="color" placeholder="Wind Chill Pearl" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Row 4: Photo Upload & Notes -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Vehicle Photo (Mobile Camera or File)</label>
+                            <div class="flex items-center gap-3">
+                                <label class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-3 cursor-pointer bg-slate-50 hover:bg-blue-50/40 transition">
+                                    <div class="flex items-center gap-2 text-slate-600">
+                                        <i data-lucide="camera" class="w-4 h-4 text-blue-600"></i>
+                                        <span class="text-xs font-medium">Take Photo / Upload Image</span>
+                                    </div>
+                                    <input type="file" id="photo-input" accept="image/*" capture="environment" class="hidden" onchange="handlePhotoPreview(event)">
+                                </label>
+                                <div id="photo-preview-box" class="w-16 h-12 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                                    <i data-lucide="image" class="w-5 h-5 text-slate-400"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Lot Notes / Key Features</label>
+                            <input type="text" id="notes" placeholder="1-Owner, Clean Carfax, Panoramic Roof..." class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Submit Bar -->
+                    <div class="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
+                        <button type="reset" onclick="clearPhotoPreview()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Clear</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-2 cursor-pointer">
+                            <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+                            <span>Add Vehicle to Lot</span>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Right Column: Bulk CSV Dropzone & Quick QR Card (4 cols) -->
+            <div class="lg:col-span-4 space-y-6 flex flex-col justify-between">
+                
+                <!-- Bulk CSV Dropzone -->
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex-1 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="file-spreadsheet" class="w-5 h-5 text-emerald-600"></i>
+                                <h2 class="font-semibold text-slate-800">Bulk CSV Upload</h2>
+                            </div>
+                            <button onclick="downloadSampleCsv()" class="text-xs font-medium text-blue-600 hover:text-blue-800 underline cursor-pointer">
+                                Sample CSV
+                            </button>
+                        </div>
+                        <p class="text-xs text-slate-500 mb-4">Import multiple vehicles at once from your DMS export or spreadsheet.</p>
+
+                        <div id="csv-dropzone" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/70 hover:bg-emerald-50/30">
+                            <input type="file" id="csv-file-input" accept=".csv" class="hidden">
+                            <div class="mx-auto w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
+                                <i data-lucide="upload" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-sm font-medium text-slate-700">Drag & drop CSV file here</p>
+                            <p class="text-xs text-slate-400 mt-1">or click to browse files</p>
+                        </div>
+                    </div>
+
+                    <!-- Mini Mobile QR Promo Card -->
+                    <div class="mt-5 pt-5 border-t border-slate-100 flex items-center justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-800">Scanning on the Lot?</p>
+                            <p class="text-xs text-slate-500 mt-0.5">Open this upload page on your phone via QR code.</p>
+                        </div>
+                        <button onclick="openQrModal()" class="shrink-0 bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer">
+                            <i data-lucide="qr-code" class="w-4 h-4 text-blue-400"></i>
+                            <span>Get QR</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Live Inventory Table & Controls -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+                <div>
+                    <h2 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                        <span>Live Lot Inventory</span>
+                        <span id="inventory-count-badge" class="bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">0</span>
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Changes automatically persist in browser storage.</p>
+                </div>
+
+                <!-- Search, Filter & Export Toolbar -->
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <div class="relative flex-1 sm:flex-initial">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                        <input type="text" id="search-input" oninput="renderInventory()" placeholder="Search VIN, Make, Model..." class="w-full sm:w-56 pl-9 pr-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <select id="status-filter" onchange="renderInventory()" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="ALL">All Statuses</option>
+                        <option value="Available">Available</option>
+                        <option value="Certified Pre-Owned">Certified Pre-Owned</option>
+                        <option value="New">New</option>
+                        <option value="In Recon">In Recon</option>
+                        <option value="Pending Sale">Pending Sale</option>
+                        <option value="Sold">Sold</option>
+                    </select>
+
+                    <button onclick="exportInventoryCsv()" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition cursor-pointer">
+                        <i data-lucide="download" class="w-4 h-4 text-slate-500"></i>
+                        <span>Export CSV</span>
+                    </button>
+
+                    <button onclick="openClearConfirmModal()" class="bg-white hover:bg-red-50 text-red-600 border border-slate-200 hover:border-red-200 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition cursor-pointer" title="Reset Inventory">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Responsive Table Container -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="py-3.5 px-4">Vehicle</th>
+                            <th class="py-3.5 px-4">VIN</th>
+                            <th class="py-3.5 px-4">Mileage</th>
+                            <th class="py-3.5 px-4">Price</th>
+                            <th class="py-3.5 px-4">Status</th>
+                            <th class="py-3.5 px-4">Color & Notes</th>
+                            <th class="py-3.5 px-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-tbody" class="divide-y divide-slate-100 text-sm">
+                        <!-- Rows dynamically injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden py-12 px-4 text-center">
+                <div class="mx-auto w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
+                    <i data-lucide="car" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-sm font-semibold text-slate-800">No vehicles match your view</h3>
+                <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Add a vehicle using the form above, upload a CSV sheet, or clear your current search filters.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MOBILE QR ACCESS MODAL -->
+    <div id="qr-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i data-lucide="smartphone" class="w-5 h-5 text-blue-400"></i>
+                    <h3 class="font-bold text-base">Mobile Lot Uploader QR</h3>
+                </div>
+                <button onclick="closeQrModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 text-center space-y-5">
+                <p class="text-sm text-slate-600">
+                    Scan this QR code with your smartphone camera to open this exact Vehicle Inventory Upload page directly on the lot.
+                </p>
+
+                <!-- QR Code Canvas Container -->
+                <div class="inline-flex flex-col items-center justify-center p-4 bg-white border-2 border-slate-200 rounded-2xl shadow-inner">
+                    <div id="qrcode-container" class="flex items-center justify-center"></div>
+                    <span class="text-[11px] font-mono text-slate-400 mt-2.5 uppercase tracking-widest">Scan to Upload Vehicles</span>
+                </div>
+
+                <!-- Editable Target URL Box (in case user wants to customize or copy) -->
+                <div class="text-left">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Target Page URL</label>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="qr-url-input" oninput="regenerateQrCode()" class="flex-1 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button onclick="copyQrUrl()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-xs font-medium transition cursor-pointer shrink-0">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="downloadQrPng()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Download PNG</span>
+                    </button>
+                    <button onclick="closeQrModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl text-sm transition cursor-pointer">
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRMATION MODAL (Custom replacement for confirm()) -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div class="flex items-center gap-3 text-red-600">
+                <div class="bg-red-100 p-2 rounded-full">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </div>
+                <h3 class="font-bold text-slate-900">Clear All Inventory?</h3>
+            </div>
+            <p class="text-sm text-slate-600">This will remove all saved vehicles from your local inventory list. You can reload sample data afterward if needed.</p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+                <button onclick="confirmClearInventory()" class="px-4 py-2 rounded-lg text-sm font-semibold bg-red-600 hover:bg-red-700 text-white cursor-pointer">Yes, Clear All</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State & Storage Keys ---
+        const STORAGE_KEY = 'autolot_pro_inventory_v1';
+        let inventory = [];
+        let currentPhotoDataUrl = '';
+        let qrInstance = null;
+
+        // Sample VIN presets for instant testing/auto-fill
+        const SAMPLE_VEHICLES = [
+            { vin: '4T1K61AK8PU128941', year: 2023, make: 'Toyota', model: 'Camry', trim: 'XSE AWD', mileage: 12450, price: 31490, color: 'Supersonic Red', status: 'Certified Pre-Owned', notes: '1-Owner, Red Cockpit Leather, JBL Audio' },
+            { vin: '1FTFW1E84NFA90214', year: 2022, make: 'Ford', model: 'F-150', trim: 'Lariat 4WD', mileage: 28900, price: 46800, color: 'Antimatter Blue', status: 'Available', notes: '3.5L EcoBoost, Max Trailer Tow Pkg' },
+            { vin: '5YJ3E1EA1PF541902', year: 2023, make: 'Tesla', model: 'Model 3', trim: 'Long Range', mileage: 9820, price: 36500, color: 'Pearl White', status: 'Available', notes: 'Dual Motor AWD, Enhanced Autopilot' },
+            { vin: '2HGFE2F59NH583920', year: 2022, make: 'Honda', model: 'Civic', trim: 'Sport Touring', mileage: 19300, price: 25950, color: 'Sonic Gray Pearl', status: 'Pending Sale', notes: 'Hatchback, Bose Sound, Clean Carfax' },
+            { vin: '1C4RJFBG5MC671039', year: 2021, make: 'Jeep', model: 'Grand Cherokee', trim: 'Limited 4x4', mileage: 37410, price: 29400, color: 'Diamond Black', status: 'In Recon', notes: 'Tech Group, Dual-Pane Sunroof' }
+        ];
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadInventory();
+            setupCsvDropzone();
+            initQrCodeUrl();
+            renderInventory();
+        });
+
+        // --- Persistence Logic ---
+        function loadInventory() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    inventory = JSON.parse(raw);
+                } else {
+                    // Seed initial sample vehicles on first launch so dashboard looks rich
+                    inventory = SAMPLE_VEHICLES.slice(0, 3).map((v, idx) => ({
+                        ...v,
+                        id: 'veh_' + (Date.now() + idx),
+                        photo: '',
+                        addedAt: new Date().toISOString()
+                    }));
+                    saveInventory();
+                }
+            } catch (e) {
+                console.error('Storage load error:', e);
+                inventory = [];
+            }
+        }
+
+        function saveInventory() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
+            } catch (e) {
+                showToast('Storage quota reached. Try using smaller vehicle photos.', 'error');
+            }
+        }
+
+        // --- QR Code Generation & Modal Controls ---
+        function initQrCodeUrl() {
+            const urlInput = document.getElementById('qr-url-input');
+            // Use current window URL as default
+            urlInput.value = window.location.href;
+        }
+
+        function openQrModal() {
+            const modal = document.getElementById('qr-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            regenerateQrCode();
+        }
+
+        function closeQrModal() {
+            const modal = document.getElementById('qr-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function regenerateQrCode() {
+            const container = document.getElementById('qrcode-container');
+            const targetUrl = document.getElementById('qr-url-input').value.trim() || window.location.href;
+            container.innerHTML = ''; // Clear previous QR
+
+            qrInstance = new QRCode(container, {
+                text: targetUrl,
+                width: 210,
+                height: 210,
+                colorDark: '#0f172a',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+
+        function downloadQrPng() {
+            const container = document.getElementById('qrcode-container');
+            const canvas = container.querySelector('canvas');
+            const img = container.querySelector('img');
+
+            let dataUrl = '';
+            if (canvas) {
+                dataUrl = canvas.toDataURL('image/png');
+            } else if (img && img.src) {
+                dataUrl = img.src;
+            }
+
+            if (!dataUrl) {
+                showToast('QR code not ready yet.', 'error');
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = 'AutoLot-Vehicle-Upload-QR.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('QR Code downloaded as PNG!', 'success');
+        }
+
+        function copyQrUrl() {
+            const input = document.getElementById('qr-url-input');
+            input.select();
+            input.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            showToast('Page URL copied to clipboard!', 'success');
+        }
+
+        // --- Single Vehicle Form Handlers ---
+        let sampleCycleIndex = 0;
+        function autoFillSampleVin() {
+            const sample = SAMPLE_VEHICLES[sampleCycleIndex % SAMPLE_VEHICLES.length];
+            sampleCycleIndex++;
+
+            document.getElementById('vin').value = sample.vin;
+            document.getElementById('year').value = sample.year;
+            document.getElementById('make').value = sample.make;
+            document.getElementById('model').value = sample.model;
+            document.getElementById('trim').value = sample.trim;
+            document.getElementById('mileage').value = sample.mileage;
+            document.getElementById('price').value = sample.price;
+            document.getElementById('color').value = sample.color;
+            document.getElementById('status').value = sample.status;
+            document.getElementById('notes').value = sample.notes;
+
+            showToast(`Auto-filled ${sample.year} ${sample.make} ${sample.model}`, 'info');
+        }
+
+        function decodeCurrentVin() {
+            const vin = document.getElementById('vin').value.trim().toUpperCase();
+            if (vin.length < 11) {
+                showToast('Enter a valid 17-character VIN to decode.', 'error');
+                return;
+            }
+            // Check if it matches any sample VIN first
+            const match = SAMPLE_VEHICLES.find(v => v.vin === vin);
+            if (match) {
+                document.getElementById('year').value = match.year;
+                document.getElementById('make').value = match.make;
+                document.getElementById('model').value = match.model;
+                document.getElementById('trim').value = match.trim;
+                showToast('VIN matched & decoded!', 'success');
+                return;
+            }
+            // Basic WMI / Year character heuristic fallback
+            const yearCodes = { 'L': 2020, 'M': 2021, 'N': 2022, 'P': 2023, 'R': 2024, 'S': 2025, 'T': 2026 };
+            const yrChar = vin.charAt(9);
+            if (yearCodes[yrChar] && !document.getElementById('year').value) {
+                document.getElementById('year').value = yearCodes[yrChar];
+            }
+            showToast('VIN format validated. Fill remaining specs.', 'info');
+        }
+
+        function handlePhotoPreview(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Resize image via canvas so localStorage stays lightweight
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const maxW = 360;
+                    const scale = Math.min(1, maxW / img.width);
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    currentPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+
+                    const previewBox = document.getElementById('photo-preview-box');
+                    previewBox.innerHTML = `<img src="${currentPhotoDataUrl}" alt="Preview" class="w-full h-full object-cover">`;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearPhotoPreview() {
+            currentPhotoDataUrl = '';
+            const previewBox = document.getElementById('photo-preview-box');
+            previewBox.innerHTML = `<i data-lucide="image" class="w-5 h-5 text-slate-400"></i>`;
+            lucide.createIcons();
+        }
+
+        document.getElementById('vehicle-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const newVehicle = {
+                id: 'veh_' + Date.now(),
+                vin: document.getElementById('vin').value.trim().toUpperCase(),
+                year: parseInt(document.getElementById('year').value, 10),
+                make: document.getElementById('make').value.trim(),
+                model: document.getElementById('model').value.trim(),
+                trim: document.getElementById('trim').value.trim(),
+                mileage: parseInt(document.getElementById('mileage').value, 10) || 0,
+                price: parseFloat(document.getElementById('price').value) || 0,
+                color: document.getElementById('color').value.trim() || 'Unspecified',
+                status: document.getElementById('status').value,
+                notes: document.getElementById('notes').value.trim(),
+                photo: currentPhotoDataUrl,
+                addedAt: new Date().toISOString()
+            };
+
+            inventory.unshift(newVehicle);
+            saveInventory();
+            renderInventory();
+
+            this.reset();
+            clearPhotoPreview();
+            showToast(`Added ${newVehicle.year} ${newVehicle.make} ${newVehicle.model} to lot!`, 'success');
+        });
+
+        // --- Bulk CSV Upload & Sample Template ---
+        function setupCsvDropzone() {
+            const dropzone = document.getElementById('csv-dropzone');
+            const fileInput = document.getElementById('csv-file-input');
+
+            dropzone.addEventListener('click', () => fileInput.click());
+
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('border-emerald-500', 'bg-emerald-50');
+            });
+
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('border-emerald-500', 'bg-emerald-50');
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('border-emerald-500', 'bg-emerald-50');
+                if (e.dataTransfer.files.length) {
+                    processCsvFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length) {
+                    processCsvFile(e.target.files[0]);
+                    fileInput.value = '';
+                }
+            });
+        }
+
+        function processCsvFile(file) {
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                showToast('Please upload a valid .CSV file.', 'error');
+                return;
+            }
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    const rows = results.data;
+                    let addedCount = 0;
+
+                    rows.forEach((row, idx) => {
+                        // Flexible case-insensitive header matching
+                        const getField = (keys) => {
+                            for (const k of Object.keys(row)) {
+                                if (keys.includes(k.trim().toLowerCase())) return row[k];
+                            }
+                            return '';
+                        };
+
+                        const make = getField(['make', 'brand']);
+                        const model = getField(['model']);
+                        if (!make && !model) return;
+
+                        inventory.unshift({
+                            id: 'veh_' + (Date.now() + idx),
+                            vin: (getField(['vin']) || 'N/A').toString().toUpperCase(),
+                            year: parseInt(getField(['year', 'yr']), 10) || new Date().getFullYear(),
+                            make: make.toString().trim(),
+                            model: model.toString().trim(),
+                            trim: (getField(['trim', 'series']) || '').toString().trim(),
+                            mileage: parseInt(String(getField(['mileage', 'miles', 'odometer'])).replace(/[^0-9]/g, ''), 10) || 0,
+                            price: parseFloat(String(getField(['price', 'list price', 'msrp'])).replace(/[^0-9.]/g, '')) || 0,
+                            color: (getField(['color', 'exterior color']) || 'Unspecified').toString().trim(),
+                            status: (getField(['status', 'condition']) || 'Available').toString().trim(),
+                            notes: (getField(['notes', 'comments', 'features']) || '').toString().trim(),
+                            photo: '',
+                            addedAt: new Date().toISOString()
+                        });
+                        addedCount++;
+                    });
+
+                    if (addedCount > 0) {
+                        saveInventory();
+                        renderInventory();
+                        showToast(`Imported ${addedCount} vehicle(s) from CSV!`, 'success');
+                    } else {
+                        showToast('No valid vehicle rows found in CSV.', 'error');
+                    }
+                },
+                error: function() {
+                    showToast('Failed to parse CSV file.', 'error');
+                }
+            });
+        }
+
+        function downloadSampleCsv() {
+            const headers = ['VIN,Year,Make,Model,Trim,Mileage,Price,Exterior Color,Status,Notes'];
+            const rows = SAMPLE_VEHICLES.map(v =>
+                `"${v.vin}",${v.year},"${v.make}","${v.model}","${v.trim}",${v.mileage},${v.price},"${v.color}","${v.status}","${v.notes}"`
+            );
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', 'AutoLot_Sample_Inventory_Template.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Sample CSV template downloaded!', 'info');
+        }
+
+        function exportInventoryCsv() {
+            if (inventory.length === 0) {
+                showToast('Inventory is empty—nothing to export.', 'error');
+                return;
+            }
+            const headers = ['VIN,Year,Make,Model,Trim,Mileage,Price,Exterior Color,Status,Notes'];
+            const rows = inventory.map(v =>
+                `"${v.vin}",${v.year},"${v.make}","${v.model}","${v.trim || ''}",${v.mileage},${v.price},"${v.color || ''}","${v.status}","${(v.notes || '').replace(/"/g, '""')}"`
+            );
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `Lot_Inventory_Export_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast(`Exported ${inventory.length} vehicles to CSV!`, 'success');
+        }
+
+        // --- Render Table & KPI Stats ---
+        function renderInventory() {
+            const query = document.getElementById('search-input').value.trim().toLowerCase();
+            const statusFilter = document.getElementById('status-filter').value;
+
+            const filtered = inventory.filter(v => {
+                const matchesStatus = statusFilter === 'ALL' || v.status === statusFilter;
+                const haystack = `${v.vin} ${v.year} ${v.make} ${v.model} ${v.trim} ${v.color} ${v.notes}`.toLowerCase();
+                const matchesQuery = !query || haystack.includes(query);
+                return matchesStatus && matchesQuery;
+            });
+
+            // Update KPIs
+            document.getElementById('stat-total').textContent = inventory.length;
+            const availableCount = inventory.filter(v => ['Available', 'Certified Pre-Owned', 'New'].includes(v.status)).length;
+            document.getElementById('stat-available').textContent = availableCount;
+
+            const totalVal = inventory.reduce((sum, v) => sum + (Number(v.price) || 0), 0);
+            document.getElementById('stat-value').textContent = '$' + totalVal.toLocaleString();
+
+            const avgMiles = inventory.length
+                ? Math.round(inventory.reduce((sum, v) => sum + (Number(v.mileage) || 0), 0) / inventory.length)
+                : 0;
+            document.getElementById('stat-mileage').textContent = avgMiles.toLocaleString() + ' mi';
+
+            document.getElementById('inventory-count-badge').textContent = filtered.length;
+
+            // Render Rows
+            const tbody = document.getElementById('inventory-tbody');
+            const emptyState = document.getElementById('empty-state');
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = filtered.map(v => {
+                const badgeStyle = getStatusBadgeClass(v.status);
+                const thumbHtml = v.photo
+                    ? `<img src="${v.photo}" alt="${v.make}" class="w-14 h-10 rounded-lg object-cover border border-slate-200 shrink-0">`
+                    : `<div class="w-14 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0"><i data-lucide="car" class="w-5 h-5"></i></div>`;
+
+                return `
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="py-3.5 px-4">
+                            <div class="flex items-center gap-3">
+                                ${thumbHtml}
+                                <div>
+                                    <div class="font-semibold text-slate-900">${v.year} ${escapeHtml(v.make)} ${escapeHtml(v.model)}</div>
+                                    <div class="text-xs text-slate-500">${escapeHtml(v.trim || 'Base')}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 font-mono text-xs text-slate-600">${escapeHtml(v.vin)}</td>
+                        <td class="py-3.5 px-4 text-slate-700 font-medium">${Number(v.mileage).toLocaleString()} mi</td>
+                        <td class="py-3.5 px-4 font-bold text-slate-900">$${Number(v.price).toLocaleString()}</td>
+                        <td class="py-3.5 px-4">
+                            <select onchange="updateVehicleStatus('${v.id}', this.value)" class="text-xs font-semibold px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none ${badgeStyle}">
+                                ${['Available', 'Certified Pre-Owned', 'New', 'In Recon', 'Pending Sale', 'Sold'].map(st =>
+                                    `<option value="${st}" ${v.status === st ? 'selected' : ''}>${st}</option>`
+                                ).join('')}
+                            </select>
+                        </td>
+                        <td class="py-3.5 px-4 max-w-xs">
+                            <div class="text-xs font-medium text-slate-700">${escapeHtml(v.color || '—')}</div>
+                            <div class="text-xs text-slate-400 truncate" title="${escapeHtml(v.notes || '')}">${escapeHtml(v.notes || 'No notes')}</div>
+                        </td>
+                        <td class="py-3.5 px-4 text-right">
+                            <button onclick="deleteVehicle('${v.id}')" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer" title="Delete Vehicle">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function getStatusBadgeClass(status) {
+            switch (status) {
+                case 'Available': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                case 'Certified Pre-Owned': return 'bg-blue-50 text-blue-700 border-blue-200';
+                case 'New': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                case 'In Recon': return 'bg-amber-50 text-amber-700 border-amber-200';
+                case 'Pending Sale': return 'bg-purple-50 text-purple-700 border-purple-200';
+                case 'Sold': return 'bg-slate-100 text-slate-600 border-slate-300';
+                default: return 'bg-slate-50 text-slate-700 border-slate-200';
+            }
+        }
+
+        function updateVehicleStatus(id, newStatus) {
+            const item = inventory.find(v => v.id === id);
+            if (item) {
+                item.status = newStatus;
+                saveInventory();
+                renderInventory();
+                showToast(`Updated status to ${newStatus}`, 'info');
+            }
+        }
+
+        function deleteVehicle(id) {
+            inventory = inventory.filter(v => v.id !== id);
+            saveInventory();
+            renderInventory();
+            showToast('Vehicle removed from inventory.', 'info');
+        }
+
+        // --- Confirmation Modal Controls ---
+        function openClearConfirmModal() {
+            const m = document.getElementById('confirm-modal');
+            m.classList.remove('hidden');
+            m.classList.add('flex');
+        }
+
+        function closeConfirmModal() {
+            const m = document.getElementById('confirm-modal');
+            m.classList.add('hidden');
+            m.classList.remove('flex');
+        }
+
+        function confirmClearInventory() {
+            inventory = [];
+            saveInventory();
+            renderInventory();
+            closeConfirmModal();
+            showToast('All inventory cleared.', 'info');
+        }
+
+        // --- Utility: Toast & HTML Escaping ---
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const colors = {
+                success: 'bg-slate-900 text-white border-emerald-500',
+                error: 'bg-red-600 text-white border-red-800',
+                info: 'bg-slate-800 text-white border-blue-500'
+            };
+            const toast = document.createElement('div');
+            toast.className = `${colors[type] || colors.info} border-l-4 px-4 py-3 rounded-lg shadow-lg text-xs font-medium flex items-center gap-2 pointer-events-auto transition-all duration-200`;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 200);
+            }, 3000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+</html>
